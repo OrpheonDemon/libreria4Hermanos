@@ -7,6 +7,9 @@ import moveRouter from './controllers/moveController.js'
 import sessionRouter from './controllers/sessionController.js'
 import clientRouter from './controllers/clientController.js'
 import authRouter from './controllers/authController.js'
+import providerRouter from './controllers/providerController.js'
+import purchaseRouter from './controllers/purchaseController.js'
+import kardexRouter from './controllers/kardexController.js'
 import { initDB } from './db.js'
 
 const PORT = process.env.PORT || 4000
@@ -23,6 +26,9 @@ async function main() {
   app.use('/api/sessions', sessionRouter)
   app.use('/api/clients', clientRouter)
   app.use('/api/auth', authRouter)
+  app.use('/api/providers', providerRouter)
+  app.use('/api/purchases', purchaseRouter)
+  app.use('/api/kardex', kardexRouter)
 
   app.get('/api/health', (req, res) => res.json({ ok: true }))
 

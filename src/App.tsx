@@ -1,8 +1,8 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { fetchProducts, decrementProductStock, createSale, fetchClients, fetchActiveSession, openSession, closeSession, createClient, fetchDailySales, loginUser } from './api'
-import type { Client, Product, Session, User } from './types'
+import { fetchProducts, decrementProductStock, createSale, fetchClients, fetchActiveSession, openSession, closeSession, createClient, fetchDailySales, loginUser, fetchProviders, createPurchase, fetchKardex } from './api'
+import type { Client, Product, Session, User, Provider, Move } from './types'
 
-type PageView = 'inicio' | 'ventas' | 'ventas-del-dia' | 'arqueo' | 'inventario' | 'clientes'
+type PageView = 'inicio' | 'ventas' | 'ventas-del-dia' | 'arqueo' | 'inventario' | 'clientes' | 'kardex'
 
 const formatCurrency = (value: number) =>
   new Intl.NumberFormat('es-BO', {
@@ -30,6 +30,10 @@ export default function App() {
   const [selectedClientId, setSelectedClientId] = useState<number | null>(null)
   const [cart, setCart] = useState<{ producto_id: number; nombre: string; cantidad: number; precio_unitario: number }[]>([])
   const [clienteActivo, setClienteActivo] = useState<Client | null>(null)
+  const [providers, setProviders] = useState<Provider[]>([])
+  const [selectedProviderId, setSelectedProviderId] = useState<number | null>(null)
+  const [purchaseItems, setPurchaseItems] = useState<{ producto_id: number; nombre: string; cantidad: number; precio_unitario: number }[]>([])
+  const [kardexRows, setKardexRows] = useState<Move[]>([])
 
   const handleLogin = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -51,15 +55,19 @@ export default function App() {
   const loadData = async () => {
     setLoading(true)
     try {
-      const [p, c, s] = await Promise.all([fetchProducts(), fetchClients(), fetchActiveSession()])
+      const [p, c, s, prov, k] = await Promise.all([fetchProducts(), fetchClients(), fetchActiveSession(), fetchProviders(), fetchKardex()])
       setProducts(p)
       setClients(c)
       setActiveSession(s)
+      setProviders(prov)
+      setKardexRows(k)
       await loadDailySales()
     } catch {
       setProducts([])
       setClients([])
       setActiveSession(null)
+      setProviders([])
+      setKardexRows([])
       setDailySales([])
     } finally {
       setLoading(false)
@@ -73,6 +81,49 @@ export default function App() {
       setDailySales(sales)
     } catch {
       setDailySales([])
+    }
+  }
+
+  const addPurchaseItem = (product: Product) => {
+    setPurchaseItems(prev => {
+      const existing = prev.find(item => item.producto_id === product.id)
+      if (existing) {
+        return prev.map(item => item.producto_id === product.id ? { ...item, cantidad: item.cantidad + 1 } : item)
+      }
+      return [...prev, { producto_id: product.id, nombre: product.nombre, cantidad: 1, precio_unitario: product.precio_venta }]
+    })
+  }
+
+  const updatePurchaseItem = (producto_id: number, quantity: number) => {
+    setPurchaseItems(prev => prev.map(item => item.producto_id === producto_id ? { ...item, cantidad: Math.max(1, quantity) } : item))
+  }
+
+  const removePurchaseItem = (producto_id: number) => {
+    setPurchaseItems(prev => prev.filter(item => item.producto_id !== producto_id))
+  }
+
+  const submitPurchase = async () => {
+    if (!selectedProviderId) return alert('Selecciona un proveedor para la compra')
+    if (purchaseItems.length === 0) return alert('Agrega productos para la compra')
+    const subtotal = purchaseItems.reduce((sum, item) => sum + item.precio_unitario * item.cantidad, 0)
+    const payload = {
+      fecha: new Date().toISOString(),
+      id_proveedor: selectedProviderId,
+      subtotal,
+      total: subtotal,
+      observacion: 'Compra de inventario',
+      id_usuario: currentUser?.id || 1,
+      items: purchaseItems.map(item => ({ producto_id: item.producto_id, cantidad: item.cantidad, precio_unitario: item.precio_unitario }))
+    }
+    try {
+      await createPurchase(payload)
+      await loadData()
+      setPurchaseItems([])
+      setSelectedProviderId(null)
+      alert('Compra registrada y stock actualizado')
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err)
+      alert('Error registrando compra: ' + msg)
     }
   }
 
@@ -342,7 +393,7 @@ export default function App() {
               onClick={() => setPage(view)}
               className={`rounded-full px-4 py-2 text-sm font-semibold transition ${page === view ? (role === 'admin' ? 'bg-violet-700 text-white shadow-lg shadow-violet-700/20' : 'bg-sky-700 text-white shadow-lg shadow-sky-700/20') : 'border border-white/80 bg-white/80 text-slate-700 hover:bg-white'}`}
             >
-              {view === 'inicio' ? 'Inicio' : view === 'ventas' ? 'Ventas' : view === 'ventas-del-dia' ? 'Ventas del día' : view === 'arqueo' ? 'Arqueo caja' : view === 'clientes' ? 'Clientes' : 'Inventario'}
+              {view === 'inicio' ? 'Inicio' : view === 'ventas' ? 'Ventas' : view === 'ventas-del-dia' ? 'Ventas del día' : view === 'arqueo' ? 'Arqueo caja' : view === 'clientes' ? 'Clientes' : view === 'kardex' ? 'Kardex' : 'Inventario'}
             </button>
           ))}
         </nav>
@@ -394,10 +445,16 @@ export default function App() {
                       </button>
                     ))}
                     {role === 'admin' && (
-                      <button onClick={() => setPage('inventario')} className="flex items-center justify-between rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-left text-sm font-semibold text-slate-700 transition hover:bg-white">
-                        <span>Inventario</span>
-                        <span className="text-slate-400">→</span>
-                      </button>
+                      <>
+                        <button onClick={() => setPage('inventario')} className="flex items-center justify-between rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-left text-sm font-semibold text-slate-700 transition hover:bg-white">
+                          <span>Inventario</span>
+                          <span className="text-slate-400">→</span>
+                        </button>
+                        <button onClick={() => setPage('kardex')} className="flex items-center justify-between rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-left text-sm font-semibold text-slate-700 transition hover:bg-white">
+                          <span>Kardex</span>
+                          <span className="text-slate-400">→</span>
+                        </button>
+                      </>
                     )}
                   </div>
                   <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
@@ -661,28 +718,143 @@ export default function App() {
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
                     <p className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">Inventario</p>
-                    <h2 className="text-xl font-semibold text-slate-900">Productos y stock</h2>
+                    <h2 className="text-xl font-semibold text-slate-900">Productos y compras</h2>
                   </div>
                   <div className="rounded-full bg-slate-100 px-3 py-1 text-sm font-semibold text-slate-700">{products.length} productos</div>
                 </div>
-                <div className="mt-5 grid gap-4">
-                  {products.map(product => (
-                    <div key={product.id} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <div className="mt-5 grid gap-6 lg:grid-cols-[0.7fr_0.3fr]">
+                  <div className="space-y-4">
+                    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
                       <div className="flex flex-wrap items-center justify-between gap-3">
                         <div>
-                          <div className="font-semibold text-slate-900">{product.nombre}</div>
-                          <div className="text-sm text-slate-500">{product.descripcion}</div>
+                          <h3 className="font-semibold text-slate-900">Lista de productos</h3>
+                          <p className="text-sm text-slate-500">Revisa stock y precio de venta.</p>
                         </div>
-                        <div className="rounded-full bg-emerald-100 px-3 py-1 text-sm font-semibold text-emerald-700">Stock {product.stock_actual}</div>
+                        <span className="rounded-full bg-emerald-100 px-3 py-1 text-sm font-semibold text-emerald-700">{products.length}</span>
                       </div>
-                      <div className="mt-3 grid gap-2 sm:grid-cols-3">
-                        <div className="rounded-2xl bg-white px-3 py-2 text-sm text-slate-600">Precio venta: <strong className="text-slate-900">{formatCurrency(product.precio_venta)}</strong></div>
-                        <div className="rounded-2xl bg-white px-3 py-2 text-sm text-slate-600">Costo promedio: <strong className="text-slate-900">{formatCurrency(product.costo_promedio ?? 0)}</strong></div>
-                        <div className="rounded-2xl bg-white px-3 py-2 text-sm text-slate-600">Stock mínimo: <strong className="text-slate-900">{product.stock_minimo}</strong></div>
+                      <div className="mt-5 grid gap-4">
+                        {products.map(product => (
+                          <div key={product.id} className="rounded-2xl border border-slate-200 bg-white p-4">
+                            <div className="flex flex-wrap items-center justify-between gap-3">
+                              <div>
+                                <div className="font-semibold text-slate-900">{product.nombre}</div>
+                                <div className="text-sm text-slate-500">{product.descripcion}</div>
+                              </div>
+                              <span className="rounded-full bg-emerald-100 px-3 py-1 text-sm font-semibold text-emerald-700">Stock {product.stock_actual}</span>
+                            </div>
+                            <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                              <div className="rounded-2xl bg-slate-50 px-3 py-2 text-sm text-slate-600">Precio venta: <strong className="text-slate-900">{formatCurrency(product.precio_venta)}</strong></div>
+                              <div className="rounded-2xl bg-slate-50 px-3 py-2 text-sm text-slate-600">Costo promedio: <strong className="text-slate-900">{formatCurrency(product.costo_promedio ?? 0)}</strong></div>
+                              <div className="rounded-2xl bg-slate-50 px-3 py-2 text-sm text-slate-600">Stock mínimo: <strong className="text-slate-900">{product.stock_minimo}</strong></div>
+                            </div>
+                            <button onClick={() => addPurchaseItem(product)} className="mt-4 rounded-2xl bg-sky-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-sky-700">Agregar a compra</button>
+                          </div>
+                        ))}
                       </div>
                     </div>
-                  ))}
+                    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                      <div className="mb-4 flex items-center justify-between gap-3">
+                        <div>
+                          <h3 className="font-semibold text-slate-900">Nuevo pedido</h3>
+                          <p className="text-sm text-slate-500">Registra una compra desde un proveedor.</p>
+                        </div>
+                        <span className="rounded-full bg-slate-100 px-3 py-1 text-sm font-semibold text-slate-700">{purchaseItems.length} ítems</span>
+                      </div>
+                      <div className="grid gap-3">
+                        <label className="text-sm font-semibold text-slate-700">Proveedor</label>
+                        <select
+                          className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none"
+                          value={selectedProviderId ?? ''}
+                          onChange={e => setSelectedProviderId(Number(e.target.value) || null)}
+                        >
+                          <option value="">Seleccionar proveedor</option>
+                          {providers.map(provider => (
+                            <option key={provider.id} value={provider.id}>{provider.nombre}</option>
+                          ))}
+                        </select>
+                        {purchaseItems.length === 0 ? (
+                          <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-4 text-sm text-slate-500">Agrega productos desde la lista para generar la compra.</div>
+                        ) : (
+                          <div className="space-y-3">
+                            {purchaseItems.map(item => (
+                              <div key={item.producto_id} className="rounded-2xl border border-slate-200 bg-white p-3">
+                                <div className="flex flex-wrap items-center justify-between gap-3">
+                                  <div>
+                                    <div className="font-semibold text-slate-900">{item.nombre}</div>
+                                    <div className="text-sm text-slate-500">Precio unitario: {formatCurrency(item.precio_unitario)}</div>
+                                  </div>
+                                  <button onClick={() => removePurchaseItem(item.producto_id)} className="text-sm font-semibold text-rose-600 hover:text-rose-700">Eliminar</button>
+                                </div>
+                                <div className="mt-3 flex items-center gap-3">
+                                  <label className="text-sm text-slate-600">Cantidad</label>
+                                  <input
+                                    type="number"
+                                    min={1}
+                                    value={item.cantidad}
+                                    onChange={e => updatePurchaseItem(item.producto_id, Number(e.target.value))}
+                                    className="w-24 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none"
+                                  />
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        <button onClick={submitPurchase} className="mt-4 rounded-2xl bg-emerald-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-emerald-700">Registrar compra</button>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                    <h3 className="font-semibold text-slate-900">Resumen de compra</h3>
+                    <div className="mt-4 space-y-3">
+                      <div className="rounded-2xl bg-white p-3 text-sm text-slate-600">
+                        <div className="flex items-center justify-between"><span>Proveedor</span><strong>{providers.find(p => p.id === selectedProviderId)?.nombre ?? 'No seleccionado'}</strong></div>
+                      </div>
+                      <div className="rounded-2xl bg-white p-3 text-sm text-slate-600">
+                        <div className="flex items-center justify-between"><span>Items</span><strong>{purchaseItems.length}</strong></div>
+                      </div>
+                      <div className="rounded-2xl bg-white p-3 text-sm text-slate-600">
+                        <div className="flex items-center justify-between"><span>Total estimado</span><strong>{formatCurrency(purchaseItems.reduce((sum, item) => sum + item.cantidad * item.precio_unitario, 0))}</strong></div>
+                      </div>
+                    </div>
+                  </div>
                 </div>
+              </section>
+            )}
+
+            {page === 'kardex' && (
+              <section className="rounded-[28px] border border-white/70 bg-white/85 p-6 shadow-[0_20px_70px_-30px_rgba(15,23,42,0.4)] backdrop-blur">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">Kardex</p>
+                    <h2 className="text-xl font-semibold text-slate-900">Registro de movimientos</h2>
+                  </div>
+                  <div className="rounded-full bg-slate-100 px-3 py-1 text-sm font-semibold text-slate-700">{kardexRows.length} movimientos</div>
+                </div>
+                {kardexRows.length === 0 ? (
+                  <div className="mt-5 rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center text-slate-500">No hay movimientos registrados.</div>
+                ) : (
+                  <div className="mt-5 space-y-3">
+                    {kardexRows.map(m => (
+                      <div key={m.id} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <div>
+                            <div className="font-semibold text-slate-900">{m.tipo_movimiento}</div>
+                            <div className="text-sm text-slate-500">{new Date(m.fecha).toLocaleString()}</div>
+                          </div>
+                          <span className="rounded-full bg-slate-100 px-3 py-1 text-sm font-semibold text-slate-700">{m.cantidad}</span>
+                        </div>
+                        <div className="mt-3 grid gap-2 sm:grid-cols-2 text-sm text-slate-600">
+                          <div>Producto ID: <strong className="text-slate-900">{m.id_producto ?? 'General'}</strong></div>
+                          <div>Usuario: <strong className="text-slate-900">{m.usuario ?? m.id_usuario ?? 'Desconocido'}</strong></div>
+                          <div>Proveedor: <strong className="text-slate-900">{m.id_proveedor ?? 'N/A'}</strong></div>
+                          <div>Referencia: <strong className="text-slate-900">{m.referencia ?? 'N/A'}</strong></div>
+                          <div>Stock antes: <strong className="text-slate-900">{m.stock_anterior ?? '-'}</strong></div>
+                          <div>Stock ahora: <strong className="text-slate-900">{m.stock_nuevo ?? '-'}</strong></div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </section>
             )}
           </div>

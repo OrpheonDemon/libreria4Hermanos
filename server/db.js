@@ -71,7 +71,10 @@ export async function initDB() {
       estado TEXT,
       id_producto INTEGER,
       id_usuario INTEGER,
-      id_venta INTEGER
+      id_venta INTEGER,
+      referencia TEXT,
+      usuario TEXT,
+      id_proveedor INTEGER
     );
 
     CREATE TABLE IF NOT EXISTS sessions (
@@ -97,6 +100,37 @@ export async function initDB() {
       estado TEXT
     );
 
+    CREATE TABLE IF NOT EXISTS providers (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      nombre TEXT,
+      email TEXT,
+      telefono TEXT,
+      direccion TEXT,
+      estado TEXT,
+      fecha_creacion TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS purchases (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      fecha TEXT,
+      id_proveedor INTEGER,
+      subtotal REAL,
+      total REAL,
+      estado TEXT,
+      observacion TEXT,
+      id_usuario INTEGER
+    );
+
+    CREATE TABLE IF NOT EXISTS purchase_items (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      purchase_id INTEGER,
+      producto_id INTEGER,
+      cantidad INTEGER,
+      precio_unitario REAL,
+      subtotal REAL,
+      costo_unitario REAL
+    );
+
     CREATE TABLE IF NOT EXISTS users (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       nombre TEXT,
@@ -120,9 +154,17 @@ export async function initDB() {
   const userRow = await db.get('SELECT COUNT(1) as c FROM users')
   if (userRow.c === 0) {
     await db.run(`INSERT INTO users (nombre,email,rol,password_hash,estado,fecha_creacion) VALUES (?,?,?,?,?,?)`,
+      'Root', 'root@libreria.com', 'admin', hashPassword('0000'), 'Activo', new Date().toISOString())
+    await db.run(`INSERT INTO users (nombre,email,rol,password_hash,estado,fecha_creacion) VALUES (?,?,?,?,?,?)`,
       'Administrador', 'admin@libreria.com', 'admin', hashPassword('admin123'), 'Activo', new Date().toISOString())
     await db.run(`INSERT INTO users (nombre,email,rol,password_hash,estado,fecha_creacion) VALUES (?,?,?,?,?,?)`,
       'Cajero', 'cajero@libreria.com', 'cajero', hashPassword('cajero123'), 'Activo', new Date().toISOString())
+  }
+
+  const providerRow = await db.get('SELECT COUNT(1) as c FROM providers')
+  if (providerRow.c === 0) {
+    await db.run(`INSERT INTO providers (nombre,email,telefono,direccion,estado,fecha_creacion) VALUES (?,?,?,?,?,?)`,
+      'Proveedor Central', 'ventas@proveedor.com', '+59171234567', 'Av. Central #123', 'Activo', new Date().toISOString())
   }
 
   return db

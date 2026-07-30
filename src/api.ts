@@ -1,4 +1,4 @@
-import type { Client, Product, Session } from './types'
+import type { Client, Product, Session, Provider, Move } from './types'
 
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:4000'
 
@@ -23,6 +23,27 @@ export async function createProduct(payload: Partial<Product>): Promise<Product>
 export async function fetchClients(): Promise<Client[]> {
   const res = await fetch(`${API_BASE}/api/clients`)
   if (!res.ok) throw new Error('Error fetching clients')
+  return res.json()
+}
+
+export async function fetchProviders(): Promise<Provider[]> {
+  const res = await fetch(`${API_BASE}/api/providers`)
+  if (!res.ok) throw new Error('Error fetching providers')
+  return res.json()
+}
+
+export async function createPurchase(payload: any) {
+  const res = await fetch(`${API_BASE}/api/purchases`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+  if (!res.ok) {
+    const error = await res.json().catch(() => ({ error: 'Error creating purchase' }))
+    throw new Error(error.error || 'Error creating purchase')
+  }
+  return res.json()
+}
+
+export async function fetchKardex(): Promise<Move[]> {
+  const res = await fetch(`${API_BASE}/api/kardex`)
+  if (!res.ok) throw new Error('Error fetching kardex')
   return res.json()
 }
 

@@ -36,6 +36,33 @@ export interface Session {
   id_usuario: number
 }
 
+export interface Provider {
+  id: number
+  nombre: string
+  email: string
+  telefono: string
+  direccion: string
+  estado: string
+}
+
+export interface Move {
+  id: number
+  fecha: string
+  tipo_movimiento: string
+  cantidad: number
+  stock_anterior: number | null
+  stock_nuevo: number | null
+  costo_unitario: number | null
+  observacion: string
+  estado: string
+  id_producto: number | null
+  id_usuario: number | null
+  id_venta: number | null
+  referencia?: string | null
+  usuario?: string | null
+  id_proveedor?: number | null
+}
+
 export interface User {
   id: number
   nombre: string
