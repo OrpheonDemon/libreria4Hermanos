@@ -1,6 +1,6 @@
 import type { Client, Product, Session, Provider, Move } from './types'
 
-const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:4000'
+const API_BASE = import.meta.env.VITE_API_BASE || 'http://127.0.0.1:4001'
 
 export async function fetchProducts(): Promise<Product[]> {
   const res = await fetch(`${API_BASE}/api/products`)
@@ -101,5 +101,11 @@ export async function fetchSessions() {
 export async function fetchDailySales(date: string) {
   const res = await fetch(`${API_BASE}/api/sales?date=${encodeURIComponent(date)}`)
   if (!res.ok) throw new Error('Error fetching daily sales')
+  return res.json()
+}
+
+export async function fetchReports(): Promise<ReportSummary> {
+  const res = await fetch(`${API_BASE}/api/reports`)
+  if (!res.ok) throw new Error('Error fetching reports')
   return res.json()
 }

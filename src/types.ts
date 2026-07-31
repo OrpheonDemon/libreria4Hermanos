@@ -70,3 +70,10 @@ export interface User {
   rol: 'admin' | 'cajero'
   estado: string
 }
+
+export interface ReportSummary {
+  ventasHoy: number
+  ventasMonto: number
+  productosBajoStock: number
+  totalStock: number
+}

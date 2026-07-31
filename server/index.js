@@ -10,9 +10,12 @@ import authRouter from './controllers/authController.js'
 import providerRouter from './controllers/providerController.js'
 import purchaseRouter from './controllers/purchaseController.js'
 import kardexRouter from './controllers/kardexController.js'
+import categoryRouter from './controllers/categoryController.js'
+import userRouter from './controllers/userController.js'
+import reportRouter from './controllers/reportController.js'
 import { initDB } from './db.js'
 
-const PORT = process.env.PORT || 4000
+const PORT = Number(process.env.PORT || process.env.API_PORT || 4001)
 
 async function main() {
   await initDB()
@@ -29,6 +32,9 @@ async function main() {
   app.use('/api/providers', providerRouter)
   app.use('/api/purchases', purchaseRouter)
   app.use('/api/kardex', kardexRouter)
+  app.use('/api/categories', categoryRouter)
+  app.use('/api/users', userRouter)
+  app.use('/api/reports', reportRouter)
 
   app.get('/api/health', (req, res) => res.json({ ok: true }))
 

@@ -1,170 +1,239 @@
-import sqlite3 from 'sqlite3'
-import { open } from 'sqlite'
+import mysql from 'mysql2/promise'
 import crypto from 'crypto'
-import path from 'path'
 
-const DB_PATH = path.resolve('./server/data.db')
+const DB_NAME = 'libreria4hermanos'
+const DB_CONFIG = {
+  host: process.env.DB_HOST || '127.0.0.1',
+  port: Number(process.env.DB_PORT || 3306),
+  user: process.env.DB_USER || 'root',
+  password: process.env.DB_PASSWORD || '0000',
+  charset: 'utf8mb4',
+  multipleStatements: true
+}
+
+let pool = null
+
+async function createAdminPool() {
+  return mysql.createPool({
+    ...DB_CONFIG,
+    database: undefined
+  })
+}
+
+async function ensureDatabase() {
+  const adminPool = await createAdminPool()
+  try {
+    await adminPool.query(`CREATE DATABASE IF NOT EXISTS \`${DB_NAME}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`)
+  } finally {
+    await adminPool.end()
+  }
+}
+
+export async function getPool() {
+  if (!pool) {
+    await ensureDatabase()
+    pool = mysql.createPool({
+      ...DB_CONFIG,
+      database: DB_NAME
+    })
+  }
+  return pool
+}
+
+export async function getDB() {
+  const dbPool = await getPool()
+
+  return {
+    async all(sql, ...params) {
+      const [rows] = await dbPool.query(sql, params)
+      return rows
+    },
+
+    async get(sql, ...params) {
+      const [rows] = await dbPool.query(sql, params)
+      return rows[0] || null
+    },
+
+    async run(sql, ...params) {
+      const [result] = await dbPool.execute(sql, params)
+      return {
+        lastID: result.insertId || 0,
+        changes: result.affectedRows || 0
+      }
+    },
+
+    async exec(sql) {
+      await dbPool.query(sql)
+      return null
+    }
+  }
+}
 
 const hashPassword = (raw) => crypto.createHash('sha256').update(raw).digest('hex')
 
-export async function getDB() {
-  const db = await open({
-    filename: DB_PATH,
-    driver: sqlite3.Database
-  })
-  return db
-}
-
 export async function initDB() {
   const db = await getDB()
+  const now = new Date().toISOString().slice(0, 19).replace('T', ' ')
+
   await db.exec(`
     CREATE TABLE IF NOT EXISTS products (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      codigo TEXT,
-      nombre TEXT,
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      codigo VARCHAR(50) NOT NULL UNIQUE,
+      nombre VARCHAR(150) NOT NULL,
       descripcion TEXT,
-      precio_venta REAL,
-      costo_unitario REAL,
-      costo_promedio REAL,
-      stock_actual INTEGER,
-      stock_minimo INTEGER,
-      estado TEXT,
-      id_categoria INTEGER,
-      id_proveedor INTEGER
-    );
+      precio_venta DECIMAL(12,2) NOT NULL,
+      costo_unitario DECIMAL(12,2) NOT NULL,
+      costo_promedio DECIMAL(12,2) DEFAULT 0,
+      stock_actual INT NOT NULL DEFAULT 0,
+      stock_minimo INT NOT NULL DEFAULT 0,
+      estado VARCHAR(20) NOT NULL DEFAULT 'Activo',
+      id_categoria INT DEFAULT 1,
+      id_proveedor INT DEFAULT 1
+    ) ENGINE=InnoDB;
 
     CREATE TABLE IF NOT EXISTS sales (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      numero_venta TEXT,
-      fecha TEXT,
-      subtotal REAL,
-      total REAL,
-      monto_recibido REAL,
-      cambio REAL,
-      estado TEXT,
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      numero_venta VARCHAR(50) NOT NULL UNIQUE,
+      fecha DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      subtotal DECIMAL(12,2) NOT NULL DEFAULT 0,
+      total DECIMAL(12,2) NOT NULL DEFAULT 0,
+      monto_recibido DECIMAL(12,2) NOT NULL DEFAULT 0,
+      cambio DECIMAL(12,2) NOT NULL DEFAULT 0,
+      estado VARCHAR(20) NOT NULL DEFAULT 'Pendiente',
       observacion TEXT,
-      id_cliente INTEGER,
-      id_usuario INTEGER,
-      caja_session_id INTEGER
-    );
+      id_cliente INT DEFAULT 0,
+      id_usuario INT DEFAULT 0,
+      caja_session_id INT DEFAULT 0
+    ) ENGINE=InnoDB;
 
     CREATE TABLE IF NOT EXISTS sale_items (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      sale_id INTEGER,
-      producto_id INTEGER,
-      nombre TEXT,
-      cantidad INTEGER,
-      precio_unitario REAL,
-      subtotal REAL,
-      costo_unitario REAL
-    );
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      sale_id INT NOT NULL,
+      producto_id INT NOT NULL,
+      nombre VARCHAR(150) NOT NULL,
+      cantidad INT NOT NULL DEFAULT 1,
+      precio_unitario DECIMAL(12,2) NOT NULL DEFAULT 0,
+      subtotal DECIMAL(12,2) NOT NULL DEFAULT 0,
+      costo_unitario DECIMAL(12,2) NOT NULL DEFAULT 0
+    ) ENGINE=InnoDB;
 
     CREATE TABLE IF NOT EXISTS moves (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      fecha TEXT,
-      tipo_movimiento TEXT,
-      cantidad INTEGER,
-      stock_anterior INTEGER,
-      stock_nuevo INTEGER,
-      costo_unitario REAL,
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      fecha DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      tipo_movimiento VARCHAR(20) NOT NULL,
+      cantidad INT NOT NULL DEFAULT 1,
+      stock_anterior INT NOT NULL DEFAULT 0,
+      stock_nuevo INT NOT NULL DEFAULT 0,
+      costo_unitario DECIMAL(12,2) DEFAULT 0,
       observacion TEXT,
-      estado TEXT,
-      id_producto INTEGER,
-      id_usuario INTEGER,
-      id_venta INTEGER,
-      referencia TEXT,
-      usuario TEXT,
-      id_proveedor INTEGER
-    );
+      estado VARCHAR(20) NOT NULL DEFAULT 'Activo',
+      id_producto INT NOT NULL,
+      id_usuario INT NOT NULL,
+      id_venta INT DEFAULT NULL,
+      referencia VARCHAR(255),
+      usuario VARCHAR(100),
+      id_proveedor INT DEFAULT NULL
+    ) ENGINE=InnoDB;
 
     CREATE TABLE IF NOT EXISTS sessions (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      fecha TEXT,
-      fecha_inicio TEXT,
-      fecha_fin TEXT,
-      fondo_inicial REAL,
-      monto_esperado REAL,
-      monto_actual REAL,
-      diferencia REAL,
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      fecha DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      fecha_inicio DATETIME NOT NULL,
+      fecha_fin DATETIME DEFAULT NULL,
+      fondo_inicial DECIMAL(12,2) NOT NULL DEFAULT 0,
+      monto_esperado DECIMAL(12,2) DEFAULT 0,
+      monto_actual DECIMAL(12,2) DEFAULT 0,
+      diferencia DECIMAL(12,2) DEFAULT 0,
       observacion TEXT,
-      estado TEXT,
-      id_usuario INTEGER
-    );
+      estado VARCHAR(20) NOT NULL DEFAULT 'abierta',
+      id_usuario INT DEFAULT 0
+    ) ENGINE=InnoDB;
 
     CREATE TABLE IF NOT EXISTS clients (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      nombre TEXT,
-      telefono TEXT,
-      email TEXT,
-      direccion TEXT,
-      estado TEXT
-    );
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      nombre VARCHAR(150) NOT NULL,
+      telefono VARCHAR(30),
+      email VARCHAR(150),
+      direccion VARCHAR(255),
+      estado VARCHAR(20) NOT NULL DEFAULT 'Activo'
+    ) ENGINE=InnoDB;
 
     CREATE TABLE IF NOT EXISTS providers (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      nombre TEXT,
-      email TEXT,
-      telefono TEXT,
-      direccion TEXT,
-      estado TEXT,
-      fecha_creacion TEXT
-    );
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      nombre VARCHAR(150) NOT NULL,
+      email VARCHAR(150),
+      telefono VARCHAR(30),
+      direccion VARCHAR(255),
+      estado VARCHAR(20) NOT NULL DEFAULT 'Activo',
+      fecha_creacion DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB;
 
     CREATE TABLE IF NOT EXISTS purchases (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      fecha TEXT,
-      id_proveedor INTEGER,
-      subtotal REAL,
-      total REAL,
-      estado TEXT,
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      fecha DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      id_proveedor INT NOT NULL,
+      subtotal DECIMAL(12,2) NOT NULL DEFAULT 0,
+      total DECIMAL(12,2) NOT NULL DEFAULT 0,
+      estado VARCHAR(20) NOT NULL DEFAULT 'Activo',
       observacion TEXT,
-      id_usuario INTEGER
-    );
+      id_usuario INT NOT NULL
+    ) ENGINE=InnoDB;
 
     CREATE TABLE IF NOT EXISTS purchase_items (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      purchase_id INTEGER,
-      producto_id INTEGER,
-      cantidad INTEGER,
-      precio_unitario REAL,
-      subtotal REAL,
-      costo_unitario REAL
-    );
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      purchase_id INT NOT NULL,
+      producto_id INT NOT NULL,
+      cantidad INT NOT NULL DEFAULT 1,
+      precio_unitario DECIMAL(12,2) NOT NULL DEFAULT 0,
+      subtotal DECIMAL(12,2) NOT NULL DEFAULT 0,
+      costo_unitario DECIMAL(12,2) NOT NULL DEFAULT 0
+    ) ENGINE=InnoDB;
 
     CREATE TABLE IF NOT EXISTS users (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      nombre TEXT,
-      email TEXT UNIQUE,
-      rol TEXT,
-      password_hash TEXT,
-      estado TEXT,
-      fecha_creacion TEXT
-    );
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      nombre VARCHAR(150) NOT NULL,
+      email VARCHAR(150) NOT NULL UNIQUE,
+      rol VARCHAR(50) NOT NULL DEFAULT 'cajero',
+      password_hash VARCHAR(255) NOT NULL,
+      estado VARCHAR(20) NOT NULL DEFAULT 'Activo',
+      fecha_creacion DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB;
   `)
 
-  // seed minimal products if empty
-  const row = await db.get('SELECT COUNT(1) as c FROM products')
-  if (row.c === 0) {
-    const stmt = await db.prepare(`INSERT INTO products (codigo,nombre,descripcion,precio_venta,costo_unitario,costo_promedio,stock_actual,stock_minimo,estado,id_categoria,id_proveedor) VALUES (?,?,?,?,?,?,?,?,?,?,?)`)
-    await stmt.run('PRD-001','Cuaderno universitario 100 hojas','Cuaderno espiral',25,14,14,45,10,'Activo',1,1)
-    await stmt.run('PRD-002','Lápiz HB Faber-Castell','Lápiz x12',18.5,9,9,8,15,'Activo',1,1)
-    await stmt.finalize()
+  const productCount = await db.get('SELECT COUNT(*) AS c FROM products')
+  if (productCount.c === 0) {
+    await db.run(
+      'INSERT INTO products (codigo, nombre, descripcion, precio_venta, costo_unitario, costo_promedio, stock_actual, stock_minimo, estado, id_categoria, id_proveedor) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      'PRD-001', 'Cuaderno universitario 100 hojas', 'Cuaderno espiral', 25, 14, 14, 45, 10, 'Activo', 1, 1
+    )
+    await db.run(
+      'INSERT INTO products (codigo, nombre, descripcion, precio_venta, costo_unitario, costo_promedio, stock_actual, stock_minimo, estado, id_categoria, id_proveedor) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      'PRD-002', 'Lápiz HB Faber-Castell', 'Lápiz x12', 18.5, 9, 9, 8, 15, 'Activo', 1, 1
+    )
   }
 
-  const userRow = await db.get('SELECT COUNT(1) as c FROM users')
-  if (userRow.c === 0) {
-    await db.run(`INSERT INTO users (nombre,email,rol,password_hash,estado,fecha_creacion) VALUES (?,?,?,?,?,?)`,
-      'Root', 'root@libreria.com', 'admin', hashPassword('0000'), 'Activo', new Date().toISOString())
-    await db.run(`INSERT INTO users (nombre,email,rol,password_hash,estado,fecha_creacion) VALUES (?,?,?,?,?,?)`,
-      'Administrador', 'admin@libreria.com', 'admin', hashPassword('admin123'), 'Activo', new Date().toISOString())
-    await db.run(`INSERT INTO users (nombre,email,rol,password_hash,estado,fecha_creacion) VALUES (?,?,?,?,?,?)`,
-      'Cajero', 'cajero@libreria.com', 'cajero', hashPassword('cajero123'), 'Activo', new Date().toISOString())
+  const userCount = await db.get('SELECT COUNT(*) AS c FROM users')
+  if (userCount.c === 0) {
+    await db.run(
+      'INSERT INTO users (nombre, email, rol, password_hash, estado, fecha_creacion) VALUES (?, ?, ?, ?, ?, ?)',
+      'Root', 'root@libreria.com', 'admin', hashPassword('0000'), 'Activo', now
+    )
+    await db.run(
+      'INSERT INTO users (nombre, email, rol, password_hash, estado, fecha_creacion) VALUES (?, ?, ?, ?, ?, ?)',
+      'Administrador', 'admin@libreria.com', 'admin', hashPassword('admin123'), 'Activo', now
+    )
+    await db.run(
+      'INSERT INTO users (nombre, email, rol, password_hash, estado, fecha_creacion) VALUES (?, ?, ?, ?, ?, ?)',
+      'Cajero', 'cajero@libreria.com', 'cajero', hashPassword('cajero123'), 'Activo', now
+    )
   }
 
-  const providerRow = await db.get('SELECT COUNT(1) as c FROM providers')
-  if (providerRow.c === 0) {
-    await db.run(`INSERT INTO providers (nombre,email,telefono,direccion,estado,fecha_creacion) VALUES (?,?,?,?,?,?)`,
-      'Proveedor Central', 'ventas@proveedor.com', '+59171234567', 'Av. Central #123', 'Activo', new Date().toISOString())
+  const providerCount = await db.get('SELECT COUNT(*) AS c FROM providers')
+  if (providerCount.c === 0) {
+    await db.run(
+      'INSERT INTO providers (nombre, email, telefono, direccion, estado, fecha_creacion) VALUES (?, ?, ?, ?, ?, ?)',
+      'Proveedor Central', 'ventas@proveedor.com', '+59171234567', 'Av. Central #123', 'Activo', now
+    )
   }
 
   return db

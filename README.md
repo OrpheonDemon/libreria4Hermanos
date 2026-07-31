@@ -1,9 +1,10 @@
 # Librería 4 Hermanos — Guía de instalación y puesta en marcha
 
-Esta guía explica cómo instalar, ejecutar y probar la aplicación (frontend + API) en un entorno de desarrollo local (Windows).
+Esta guía explica cómo instalar, ejecutar y probar la aplicación (frontend + API) en un entorno de desarrollo local (Windows) con MySQL.
 
 Requisitos
 - Node.js 18+ y npm
+- MySQL Server 8+
 - Git (opcional)
 
 Pasos rápidos
@@ -13,15 +14,21 @@ Pasos rápidos
 npm install
 ```
 
-2. Iniciar el servidor API (Express + SQLite):
+2. Crear la base de datos MySQL:
+
+```bash
+mysql -u root -p0000 < server/schema-mysql.sql
+```
+
+3. Iniciar el servidor API (Express + MySQL):
 
 ```bash
 npm run start:server
 ```
 
-El servidor escucha por defecto en `http://localhost:4000` y creará/sembrará la base de datos SQLite en `server/data.db` la primera vez que arranque.
+El servidor escucha por defecto en `http://localhost:4000` y se conecta a la base de datos `libreria4hermanos` con el usuario `root` y la contraseña `0000`.
 
-3. Iniciar la aplicación frontend (Vite):
+4. Iniciar la aplicación frontend (Vite):
 
 ```bash
 npm run dev
@@ -41,8 +48,8 @@ Inicio de sesión
 La API de autenticación está disponible en `POST /api/auth/login`.
 
 Base de datos
-- SQLite se guarda en `server/data.db`.
-- El servidor crea tablas y semillas iniciales para productos y usuarios si aún no existen.
+- La base de datos utilizada es MySQL y se llama `libreria4hermanos`.
+- El servidor crea tablas básicas y semillas iniciales para productos, usuarios y proveedores si aún no existen.
 
 Endpoints relevantes
 - `GET /api/products` — Listar productos
@@ -55,6 +62,10 @@ Endpoints relevantes
 - `POST /api/sessions/:id/close` — Cerrar sesión de caja (payload: `{ diferencia }`)
 - `GET /api/clients` — Listar clientes
 - `POST /api/clients` — Crear cliente
+- `GET /api/categories` — Listar categorías
+- `POST /api/categories` — Crear categoría
+- `GET /api/users` — Listar usuarios
+- `POST /api/users` — Crear usuario
 - `POST /api/auth/login` — Autenticación de usuario (payload: `{ email, password }`)
 
 Notas y recomendaciones
@@ -69,7 +80,7 @@ Comandos útiles
 - Instalar dependencias del subdirectorio server (si lo prefieres): `cd server && npm install` (no necesario si instalas desde la raíz)
 
 Problemas comunes
-- Error al abrir la DB: verifica que Node tenga permisos para escribir en `server/`.
+- Error al abrir la DB: verifica que MySQL esté activo y que las credenciales `root/0000` sean correctas.
 - Puertos en uso: cambia el puerto de Vite o la variable `PORT` antes de arrancar.
 
 Soporte

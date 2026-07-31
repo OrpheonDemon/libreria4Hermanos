@@ -31,8 +31,8 @@ export default defineConfig(({ mode }) => {
     },
     server: {
       host: '0.0.0.0',
-      // prefer explicit VITE_PORT, then PORT, otherwise default 8443
-      port: parseInt(process.env.VITE_PORT || process.env.PORT || '8443'),
+      // prefer explicit VITE_PORT, then PORT, otherwise default 5173
+      port: parseInt(process.env.VITE_PORT || process.env.PORT || '5173'),
       // allow Vite to pick next available port if preferred one is busy
       strictPort: false,
       // open the browser automatically when dev server starts
@@ -41,7 +41,7 @@ export default defineConfig(({ mode }) => {
     },
     preview: {
       host: '0.0.0.0',
-      port: parseInt(process.env.VITE_PORT || process.env.PORT || '8443'),
+      port: parseInt(process.env.VITE_PORT || process.env.PORT || '5173'),
     },
   }
 })
